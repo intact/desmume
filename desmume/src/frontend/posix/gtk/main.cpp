@@ -2856,6 +2856,7 @@ common_gtk_main( class configured_features *my_config)
 #ifdef HAVE_LIBAGG
     Desmume_InitOnce();
     Hud.reset();
+    aggDraw.hud->setFont("verdana12_bold");
     osd = new OSDCLASS(-1);
 #endif
 
