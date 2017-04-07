@@ -60,6 +60,7 @@
 
 #include "slot2.h"
 
+#include "utils/colorspacehandler/colorspacehandler.h"
 #include "utils/xstring.h"
 
 #include "filter/videofilter.h"
@@ -1504,56 +1505,6 @@ static int ConfigureDrawingArea(GtkWidget *widget, GdkEventConfigure *event, gpo
     return TRUE;
 }
 
-// Adapted from Cocoa port
-static const uint8_t bits5to8[] = {
-	0x00, 0x08, 0x10, 0x19, 0x21, 0x29, 0x31, 0x3A,
-	0x42, 0x4A, 0x52, 0x5A, 0x63, 0x6B, 0x73, 0x7B,
-	0x84, 0x8C, 0x94, 0x9C, 0xA5, 0xAD, 0xB5, 0xBD,
-	0xC5, 0xCE, 0xD6, 0xDE, 0xE6, 0xEF, 0xF7, 0xFF
-};
-
-static inline uint32_t RGB555ToRGBA8888(const uint16_t color16)
-{
-	return	(bits5to8[((color16 >> 0) & 0x001F)] << 0) |
-			(bits5to8[((color16 >> 5) & 0x001F)] << 8) |
-			(bits5to8[((color16 >> 10) & 0x001F)] << 16) |
-			0xFF000000;
-}
-
-static inline uint32_t RGB555ToBGRA8888(const uint16_t color16)
-{
-	return	(bits5to8[((color16 >> 10) & 0x001F)] << 0) |
-			(bits5to8[((color16 >> 5) & 0x001F)] << 8) |
-			(bits5to8[((color16 >> 0) & 0x001F)] << 16) |
-			0xFF000000;
-}
-
-// Adapted from Cocoa port
-static inline void RGB555ToRGBA8888Buffer(const uint16_t *__restrict__ srcBuffer, uint32_t *__restrict__ destBuffer, size_t pixelCount)
-{
-	const uint32_t *__restrict__ destBufferEnd = destBuffer + pixelCount;
-	
-	while (destBuffer < destBufferEnd)
-	{
-		*destBuffer++ = RGB555ToRGBA8888(*srcBuffer++);
-	}
-}
-
-static inline void RGB555ToBGRA8888Buffer(const uint16_t *__restrict__ srcBuffer, uint32_t *__restrict__ destBuffer, size_t pixelCount)
-{
-	const uint32_t *__restrict__ destBufferEnd = destBuffer + pixelCount;
-	
-	while (destBuffer < destBufferEnd)
-	{
-		*destBuffer++ = RGB555ToBGRA8888(*srcBuffer++);
-	}
-}
-
-static inline void gpu_screen_to_rgb(u32* dst)
-{
-    RGB555ToRGBA8888Buffer((const uint16_t *)GPU->GetDisplayInfo().masterNativeBuffer, dst, 256 * 384);
-}
-
 static inline void drawScreen(cairo_t* cr, u32* buf, gint w, gint h) {
 	cairo_surface_t* surf = cairo_image_surface_create_for_data((u8*)buf, CAIRO_FORMAT_RGB24, w, h, w * 4);
 	cairo_set_source_surface(cr, surf, 0, 0);
@@ -1676,7 +1627,7 @@ static gboolean ExposeDrawingArea (GtkWidget *widget, GdkEventExpose *event, gpo
 }
 
 static void RedrawScreen() {
-        RGB555ToBGRA8888Buffer((const uint16_t *)GPU->GetDisplayInfo().masterNativeBuffer, video->GetSrcBufferPtr(), 256 * 384);
+	ColorspaceConvertBuffer555To8888Opaque<true, true>((const uint16_t *)GPU->GetDisplayInfo().masterNativeBuffer, video->GetSrcBufferPtr(), 256 * 384);
 #ifdef HAVE_LIBAGG
 	aggDraw.hud->attach((u8*)video->GetSrcBufferPtr(), 256, 384, 1024);
 	osd->update();
@@ -2164,7 +2115,7 @@ static void Printscreen()
         H = screen_size[nds_screen.orientation].width;
     }
 
-    gpu_screen_to_rgb((u32*)rgb);
+    ColorspaceConvertBuffer555To8888Opaque<false, true>((const uint16_t *)GPU->GetDisplayInfo().masterNativeBuffer, (u32*)rgb, 256 * 384);
     screenshot = gdk_pixbuf_new_from_data(rgb,
                           GDK_COLORSPACE_RGB,
                           TRUE,
