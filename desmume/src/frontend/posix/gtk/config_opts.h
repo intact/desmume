@@ -25,7 +25,8 @@
 OPT(view_orient, int, 0, View, ScreenLayout)
 OPT(view_swap, bool, false, View, SwapScreens)
 OPT(view_rot, int, 0, View, Rotation)
-OPT(view_gap, bool, false, View, ScreenGap)
+OPT(view_screenGapSize, int, 0, View, ScreenGapSize)
+OPT(view_screenGapColor, int, 0xFFFFFF, View, ScreenGapColor)
 OPT(view_filter, int, 0, View, Filter)
 OPT(view_cairoFilter, int, 3, View, SecondaryFilter) /* default: nearest-neighbour */
 OPT(view_menu, bool, true, View, ShowMenu)

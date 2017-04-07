@@ -91,8 +91,6 @@
 
 #define EMULOOP_PRIO (G_PRIORITY_HIGH_IDLE + 20 + 1)
 
-#define GAP_SIZE 64
-
 static int draw_count;
 extern int _scanline_filter_a, _scanline_filter_b, _scanline_filter_c, _scanline_filter_d;
 VideoFilter* video;
@@ -150,7 +148,8 @@ static void ToggleMicNoise (GtkToggleAction *action);
 static void ToggleFpsLimiter (GtkToggleAction *action);
 static void ToggleAutoFrameskip (GtkToggleAction *action);
 static void ToggleSwapScreens(GtkToggleAction *action);
-static void ToggleGap (GtkToggleAction *action);
+static void SetScreenGapSize(GtkToggleAction *action, GtkRadioAction *current);
+static void SetScreenGapColor(GtkToggleAction *action, GtkRadioAction *current);
 static void SetRotation(GtkAction *action, GtkRadioAction *current);
 static void SetWinSize(GtkAction *action, GtkRadioAction *current);
 static void SetOrientation(GtkAction *action, GtkRadioAction *current);
@@ -241,7 +240,16 @@ static const char *ui_description =
 "        <separator/>"
 "        <menuitem action='fullscreen'/>"
 "      </menu>"
-"      <menuitem action='gap'/>"
+"      <menu action='ScreenGapMenu'>"
+"        <menuitem action='screengap_none'/>"
+"        <menuitem action='screengap_border'/>"
+"        <menuitem action='screengap_small'/>"
+"        <menuitem action='screengap_large'/>"
+"        <separator/>"
+"        <menuitem action='screengap_white'/>"
+"        <menuitem action='screengap_gray'/>"
+"        <menuitem action='screengap_black'/>"
+"      </menu>"
 "      <menu action='PriInterpolationMenu'>"
 "        <menuitem action='pri_interp_none'/>"
 "        <menuitem action='pri_interp_lq2x'/>"
@@ -402,6 +410,7 @@ static const GtkActionEntry action_entries[] = {
       { "RotationMenu", NULL, "_Rotation" },
       { "OrientationMenu", NULL, "LCDs _Layout" },
       { "WinsizeMenu", NULL, "_Window Size" },
+      { "ScreenGapMenu", NULL, "Screen _Gap" },
       { "PriInterpolationMenu", NULL, "Video _Filter" },
       { "InterpolationMenu", NULL, "S_econdary Video Filter" },
       { "HudMenu", NULL, "_HUD" },
@@ -434,7 +443,6 @@ static const GtkToggleActionEntry toggle_entries[] = {
 #endif
     { "enablefpslimiter", NULL, "_Limit to 60 fps", NULL, NULL, G_CALLBACK(ToggleFpsLimiter), TRUE},
     { "frameskipA", NULL, "_Auto-minimize skipping", NULL, NULL, G_CALLBACK(ToggleAutoFrameskip), TRUE},
-    { "gap", NULL, "Screen _Gap", NULL, NULL, G_CALLBACK(ToggleGap), FALSE},
     { "view_menu", NULL, "Show _menu", NULL, NULL, G_CALLBACK(ToggleMenuVisible), TRUE},
     { "view_toolbar", NULL, "Show _toolbar", NULL, NULL, G_CALLBACK(ToggleToolbarVisible), TRUE},
     { "view_statusbar", NULL, "Show _statusbar", NULL, NULL, G_CALLBACK(ToggleStatusbarVisible), TRUE},
@@ -509,6 +517,19 @@ static const GtkRadioActionEntry winsize_entries[] = {
 	{ "winsize_4", NULL, "_4x", NULL, NULL, WINSIZE_4 },
 	{ "winsize_5", NULL, "_5x", NULL, NULL, WINSIZE_5 },
 	{ "winsize_scale", NULL, "_Scale to window", NULL, NULL, WINSIZE_SCALE },
+};
+
+static const GtkRadioActionEntry screengapsize_entries[] = {
+    { "screengap_none",   NULL, "_None",   NULL, NULL, 0 },
+    { "screengap_border", NULL, "Narrow _Border", NULL, NULL, 5 },
+    { "screengap_small",  NULL, "DS (_Small)", NULL, NULL, 64 },
+    { "screengap_large",  NULL, "DS (_Large)", NULL, NULL, 90 },
+};
+
+static const GtkRadioActionEntry screengapcolor_entries[] = {
+    { "screengap_white", NULL, "_White",   NULL, NULL, 0xFFFFFF },
+    { "screengap_gray",  NULL, "_Gray", NULL, NULL, 0x4C4C4C },
+    { "screengap_black", NULL, "_Black", NULL, NULL, 0x000000 },
 };
 
 /* When adding modes here remember to add the relevent entry to screen_size */
@@ -1456,11 +1477,17 @@ static void UpdateDrawingAreaAspect()
 	}
 }
 
-static void ToggleGap(GtkToggleAction* action)
+static void SetScreenGapSize(GtkToggleAction* action, GtkRadioAction *current)
 {
-    config.view_gap = gtk_toggle_action_get_active(action);
-    nds_screen.gap_size = config.view_gap ? GAP_SIZE : 0;
+    config.view_screenGapSize = gtk_radio_action_get_current_value(current);
+    nds_screen.gap_size = config.view_screenGapSize;
     UpdateDrawingAreaAspect();
+}
+
+static void SetScreenGapColor(GtkToggleAction* action, GtkRadioAction *current)
+{
+    config.view_screenGapColor = gtk_radio_action_get_current_value(current);
+    RedrawScreen();
 }
 
 static void SetRotation(GtkAction *action, GtkRadioAction *current)
@@ -1565,6 +1592,7 @@ static inline void drawBottomScreen(cairo_t* cr, u32* buf, gint w, gint h, gint 
 static gboolean ExposeDrawingArea (GtkWidget *widget, GdkEventExpose *event, gpointer data)
 {
 	GdkWindow* window = gtk_widget_get_window(widget);
+	gint r, g, b;
 	gint daW, daH;
 #if GTK_CHECK_VERSION(2,24,0)
 	daW = gdk_window_get_width(window);
@@ -1611,7 +1639,10 @@ static gboolean ExposeDrawingArea (GtkWidget *widget, GdkEventExpose *event, gpo
 	drawTopScreen(cr, fbuf, dstW, dstH / 2, gap, nds_screen.rotation_angle, nds_screen.swap, nds_screen.orientation);
 	drawBottomScreen(cr, fbuf + dstW * dstH / 2, dstW, dstH / 2, gap, nds_screen.rotation_angle, nds_screen.swap, nds_screen.orientation);
 	// Draw gap
-	cairo_set_source_rgb(cr, 0.3, 0.3, 0.3);
+	r = (config.view_screenGapColor >> 0) & 0xFF;
+	g = (config.view_screenGapColor >> 8) & 0xFF;
+	b = (config.view_screenGapColor >> 16) & 0xFF;
+	cairo_set_source_rgb(cr, r / 255.0, g / 255.0, b / 255.0);
 	cairo_rectangle(cr, 0, dstH / 2, dstW, gap);
 	cairo_fill(cr);
 	// Complete the touch transformation matrix
@@ -3013,8 +3044,17 @@ common_gtk_main( class configured_features *my_config)
     gtk_action_set_sensitive(gtk_action_group_get_action(action_group, "cheatlist"), FALSE);
     gtk_action_set_sensitive(gtk_action_group_get_action(action_group, "cheatsearch"), FALSE);
 
-    nds_screen.gap_size = config.view_gap ? GAP_SIZE : 0;
-    gtk_toggle_action_set_active((GtkToggleAction*)gtk_action_group_get_action(action_group, "gap"), config.view_gap);
+    if (config.view_screenGapSize < 0) {
+        config.view_screenGapSize = 0;
+    } else if (config.view_screenGapSize > 128) {
+        config.view_screenGapSize = 128;
+    }
+    nds_screen.gap_size = config.view_screenGapSize;
+    gtk_action_group_add_radio_actions(action_group, screengapsize_entries, G_N_ELEMENTS(screengapsize_entries),
+            config.view_screenGapSize, G_CALLBACK(SetScreenGapSize), NULL);
+
+    gtk_action_group_add_radio_actions(action_group, screengapcolor_entries, G_N_ELEMENTS(screengapcolor_entries),
+            config.view_screenGapColor, G_CALLBACK(SetScreenGapColor), NULL);
 
     nds_screen.swap = config.view_swap;
     gtk_toggle_action_set_active((GtkToggleAction*)gtk_action_group_get_action(action_group, "orient_swapscreens"), config.view_swap);
