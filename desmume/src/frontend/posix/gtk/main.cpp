@@ -2856,6 +2856,7 @@ common_gtk_main( class configured_features *my_config)
 #ifdef HAVE_LIBAGG
     Desmume_InitOnce();
     Hud.reset();
+    osd = new OSDCLASS(-1);
 #endif
 
     /*
