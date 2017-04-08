@@ -338,6 +338,12 @@ static const char *ui_description =
 "        <menuitem action='frameskip8'/>"
 "        <menuitem action='frameskip9'/>"
 "      </menu>"
+"      <menu action='PrescaleMenu'>"
+"        <menuitem action='prescale1'/>"
+"        <menuitem action='prescale2'/>"
+"        <menuitem action='prescale3'/>"
+"        <menuitem action='prescale4'/>"
+"      </menu>"
 "      <menu action='CheatMenu'>"
 "        <menuitem action='cheatsearch'/>"
 "        <menuitem action='cheatlist'/>"
@@ -422,6 +428,7 @@ static const GtkActionEntry action_entries[] = {
       { "SPUModeMenu", NULL, "Audio _Synchronization" },
       { "SPUInterpolationMenu", NULL, "Audio _Interpolation" },
       { "FrameskipMenu", NULL, "_Frameskip" },
+      { "PrescaleMenu", NULL, "_GPU Scaling Factor" },
       { "CheatMenu", NULL, "_Cheat" },
         { "cheatsearch",     NULL,      "_Search",        NULL,       NULL,   CheatSearch },
         { "cheatlist",       NULL,      "_List",        NULL,       NULL,   CheatList },
@@ -603,6 +610,13 @@ static const GtkRadioActionEntry frameskip_entries[] = {
     { "frameskip7", NULL, "_7", NULL, NULL, FRAMESKIP_7},
     { "frameskip8", NULL, "_8", NULL, NULL, FRAMESKIP_8},
     { "frameskip9", NULL, "_9", NULL, NULL, FRAMESKIP_9},
+};
+
+static const GtkRadioActionEntry prescale_entries[] = {
+    { "prescale1", NULL, "_1", NULL, NULL, 1},
+    { "prescale2", NULL, "_2", NULL, NULL, 2},
+    { "prescale3", NULL, "_3", NULL, NULL, 3},
+    { "prescale4", NULL, "_4", NULL, NULL, 4},
 };
 
 static const GtkRadioActionEntry savet_entries[] = {
@@ -1658,9 +1672,17 @@ static gboolean ExposeDrawingArea (GtkWidget *widget, GdkEventExpose *event, gpo
 }
 
 static void RedrawScreen() {
-	ColorspaceConvertBuffer555To8888Opaque<true, true>((const uint16_t *)GPU->GetDisplayInfo().masterNativeBuffer, video->GetSrcBufferPtr(), 256 * 384);
+	if (CommonSettings.GFX3D_PrescaleHD != config.gpu_prescaleHD) {
+		CommonSettings.GFX3D_PrescaleHD = config.gpu_prescaleHD;
+		video->SetSourceSize(256 * CommonSettings.GFX3D_PrescaleHD, 384 * CommonSettings.GFX3D_PrescaleHD);
+		GPU->SetCustomFramebufferSize(256 * CommonSettings.GFX3D_PrescaleHD, 192 * CommonSettings.GFX3D_PrescaleHD);
+	}
+
+	ColorspaceConvertBuffer555To8888Opaque<true, true>((const uint16_t *)GPU->GetDisplayInfo().masterCustomBuffer,
+		video->GetSrcBufferPtr(),
+		256 * CommonSettings.GFX3D_PrescaleHD * 384 * CommonSettings.GFX3D_PrescaleHD);
 #ifdef HAVE_LIBAGG
-	aggDraw.hud->attach((u8*)video->GetSrcBufferPtr(), 256, 384, 1024);
+	aggDraw.hud->attach((u8*)video->GetSrcBufferPtr(), 256 * CommonSettings.GFX3D_PrescaleHD, 384 * CommonSettings.GFX3D_PrescaleHD, 256 * CommonSettings.GFX3D_PrescaleHD * 4);
 	osd->update();
 	DrawHUD();
 	osd->clear();
@@ -2277,6 +2299,12 @@ static void Modify_Frameskip(GtkAction *action, GtkRadioAction *current)
     if (!autoframeskip) {
         Frameskip = autoFrameskipMax;
     }
+}
+
+static void Modify_Prescale(GtkAction *action, GtkRadioAction *current)
+{
+    config.gpu_prescaleHD = gtk_radio_action_get_current_value(current);
+    RedrawScreen();
 }
 
 /////////////////////////////// TOOLS MANAGEMENT ///////////////////////////////
@@ -2916,8 +2944,14 @@ common_gtk_main( class configured_features *my_config)
     memset(&nds_screen, 0, sizeof(nds_screen));
     nds_screen.orientation = ORIENT_VERTICAL;
 
+    if (config.gpu_prescaleHD < 1 || config.gpu_prescaleHD > 4) {
+        config.gpu_prescaleHD = 1;
+    }
+    CommonSettings.GFX3D_PrescaleHD = config.gpu_prescaleHD;
+
     g_printerr("Using %d threads for video filter.\n", CommonSettings.num_cores);
-    video = new VideoFilter(256, 384, VideoFilterTypeID_None, CommonSettings.num_cores);
+    video = new VideoFilter(256 * CommonSettings.GFX3D_PrescaleHD, 384 * CommonSettings.GFX3D_PrescaleHD, VideoFilterTypeID_None, CommonSettings.num_cores);
+    GPU->SetCustomFramebufferSize(256 * CommonSettings.GFX3D_PrescaleHD, 192 * CommonSettings.GFX3D_PrescaleHD);
 
     /* Create the window */
     pWindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -3004,6 +3038,9 @@ common_gtk_main( class configured_features *my_config)
         autoframeskip = false;
         Frameskip = autoFrameskipMax;
     }
+
+    gtk_action_group_add_radio_actions(action_group, prescale_entries, G_N_ELEMENTS(prescale_entries),
+            CommonSettings.GFX3D_PrescaleHD, G_CALLBACK(Modify_Prescale), NULL);
 
     switch (config.view_rot) {
         case 0:

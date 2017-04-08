@@ -61,3 +61,5 @@ OPT(audio_enabled, bool, true, Audio, Enabled)
 OPT(audio_sync, int, 0, Audio, Synchronization)
 OPT(audio_interpolation, int, 1, Audio, Interpolation)
 
+/* 3D */
+OPT(gpu_prescaleHD, int, 1, 3D, PrescaleHD)
